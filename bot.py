@@ -4,7 +4,7 @@ import logging
 from commands.handlers.handlers import router
 
 
-bot = Bot(token='7628523548:AAEDHYo_IMBsK4SSzHwKPVkNupwQ9KT0mz0')
+bot = Bot(token='а я не покажу))))')
 dp = Dispatcher()
 
 
