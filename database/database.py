@@ -3,7 +3,7 @@ from contextlib import closing
 
 
 def create_database():
-    with closing(sqlite3.connect('database.db')) as connection:
+    with closing(sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')) as connection:
         cursor = connection.cursor()
 
         # Таблица со словами
@@ -22,7 +22,7 @@ def create_database():
         )
         ''')
 
-        # Связующая таблица для отношений многие-ко-многим
+        # Связующая таблица для отношений пользователя и слова
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS UserWords (
             user_id INTEGER NOT NULL,
@@ -32,6 +32,15 @@ def create_database():
             FOREIGN KEY (word_id) REFERENCES Words(id)
         )
         ''')
+        cursor.execute('''
+                CREATE TABLE IF NOT EXISTS SkippedWords (
+                    user_id INTEGER NOT NULL,
+                    word_id INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, word_id),
+                    FOREIGN KEY (user_id) REFERENCES Users(id),
+                    FOREIGN KEY (word_id) REFERENCES Words(id)
+                )
+                ''')
 
         # Создаем индексы для ускорения поиска
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_words ON Words(word)')
@@ -39,15 +48,16 @@ def create_database():
 
         connection.commit()
 
-def add_user(telegram_id):
-    with closing(sqlite3.connect('database.db')) as conn:
-        cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO Users (telegram_id) VALUES (?)', (telegram_id,))
-        conn.commit()
+async def add_user(telegram_id):
+    conn = sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR IGNORE INTO Users (telegram_id) VALUES (?)', (telegram_id,))
+    conn.commit()
+    conn.close()
 
 
-def add_word_to_user(telegram_id, word):
-    with closing(sqlite3.connect('database.db')) as conn:
+async def add_word_to_user(telegram_id, word):
+    with closing(sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')) as conn:
         cursor = conn.cursor()
 
         # Добавляем слово в общий словарь
@@ -64,8 +74,8 @@ def add_word_to_user(telegram_id, word):
         cursor.execute('INSERT OR IGNORE INTO UserWords (user_id, word_id) VALUES (?, ?)', (user_id, word_id))
         conn.commit()
 
-def get_user_words(telegram_id):
-    with closing(sqlite3.connect('database.db')) as conn:
+async def get_user_words(telegram_id):
+    with closing(sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')) as conn:
         cursor = conn.cursor()
         cursor.execute('''
             SELECT w.word 
@@ -77,9 +87,9 @@ def get_user_words(telegram_id):
         return [row[0] for row in cursor.fetchall()]
 
 
-def get_random_word(telegram_id):
-    """Возвращает случайное слово, которого нет у пользователя"""
-    with closing(sqlite3.connect('database.db')) as conn:
+async def get_random_word(telegram_id):
+    """Возвращает случайное слово, которого нет у пользователя и которое он не пропускал"""
+    with closing(sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')) as conn:
         cursor = conn.cursor()
         cursor.execute('''
             SELECT w.word 
@@ -91,21 +101,46 @@ def get_random_word(telegram_id):
                 WHERE u.telegram_id = ? 
                 AND uw.word_id = w.id
             )
+            AND NOT EXISTS (
+                SELECT 1 
+                FROM SkippedWords sw
+                JOIN Users u ON sw.user_id = u.id 
+                WHERE u.telegram_id = ? 
+                AND sw.word_id = w.id
+            )
             ORDER BY RANDOM() 
             LIMIT 1
-        ''', (telegram_id,))
+        ''', (telegram_id, telegram_id))
 
         result = cursor.fetchone()
         return result[0] if result else None
 
+
+async def add_skipped_word(telegram_id: int, word: str):
+    with closing(sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute('INSERT OR IGNORE INTO Words (word) VALUES (?)', (word,))
+        cursor.execute('SELECT id FROM Users WHERE telegram_id = ?', (telegram_id,))
+        user_id = cursor.fetchone()[0]
+
+        cursor.execute('SELECT id FROM Words WHERE word = ?', (word,))
+        word_id = cursor.fetchone()[0]
+
+        cursor.execute(
+            'INSERT OR IGNORE INTO SkippedWords (user_id, word_id) VALUES (?, ?)',
+            (user_id, word_id)
+        )
+        conn.commit()
+
 def add_words():
     with open('C:/Users/loban/PycharmProjects/EngRusBot/dictionary/dictionary.txt', 'r', encoding='utf-8') as f:
-        with closing(sqlite3.connect('database.db')) as conn:
+        with closing(sqlite3.connect('C:/Users/loban/PycharmProjects/EngRusBot/database.db')) as conn:
             cursor = conn.cursor()
             for i in f.readlines():
                 cursor.execute('''
                 INSERT OR IGNORE INTO Words (word) VALUES (?)
-                ''', (i[:len(i) - 2], ))
+                ''', (i[:len(i) - 1], ))
 
             conn.commit()
 
